@@ -97,7 +97,7 @@ def create_id_cards(data, user_id):
             draw_f.rectangle([(50, 160), (290, 450)], fill="#E5E7EB", outline="#9CA3AF")
     else:
         draw_f.rectangle([(50, 160), (290, 450)], fill="#E5E7EB", outline="#9CA3AF")
-[10/7/2026 12:14 PM] A/Aziz: draw_f.text((330, 160), "ሙሉ ስም / Full Name:", fill="#4B5563", font=font_small)
+        draw_f.text((330, 160), "ሙሉ ስም / Full Name:", fill="#4B5563", font=font_small)
     draw_f.text((330, 185), f"{data['name_am']}", fill="#111827", font=font_bold)
     draw_f.text((330, 220), f"{data['name_en']}", fill="#111827", font=font_bold)
     draw_f.text((330, 270), f"የትውልድ ቀን / Date of Birth:  {data['dob']}", fill="#111827", font=font_regular)
