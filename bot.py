@@ -18,11 +18,12 @@ def extract_fayda_pdf_details(pdf_path, user_id):
     image_extracted = False
     try:
         for page in reader.pages:
-            for count, image_file_object in enumerate(page.images):
-                with open(photo_path, "wb") as fp:
-                    fp.write(image_file_object.data)
-                image_extracted = True
-                break
+            if hasattr(page, 'images') and page.images:
+                for count, image_file_object in enumerate(page.images):
+                    with open(photo_path, "wb") as fp:
+                        fp.write(image_file_object.data)
+                    image_extracted = True
+                    break
             if image_extracted: break
     except Exception as e:
         logging.error(f"Image extract error: {e}")
@@ -65,13 +66,13 @@ def extract_fayda_pdf_details(pdf_path, user_id):
             if "Woreda" in line and i + 2 < len(lines):
                 data["woreda_am"] = lines[i+1]
                 data["woreda_en"] = lines[i+2]
-    except Exception as e: logging.error(f"Parsing error: {e}")
+    except Exception as e: 
+        logging.error(f"Parsing error: {e}")
     return data
 
 def create_id_cards(data, user_id):
     w, h = 1011, 638
     
-    # ⚠️ እዚህ ጋር ስሙ በትክክል እንዲነበብ አስተካክለነዋል
     try:
         font_bold = ImageFont.truetype("NotoSansEthiopic-Regular.ttf", 32)
         font_regular = ImageFont.truetype("NotoSansEthiopic-Regular.ttf", 24)
@@ -89,13 +90,14 @@ def create_id_cards(data, user_id):
     draw_f.text((50, 70), "የኢትዮጵያ ዲጂታል መታወቂያ | Ethiopian Digital ID Card", fill="#1F2937", font=font_bold)
     
     if data["photo"] and os.path.exists(data["photo"]):
-        user_photo = Image.open(data["photo"]).resize((240, 290))
-        front.paste(user_photo, (50, 160))
+        try:
+            user_photo = Image.open(data["photo"]).resize((240, 290))
+            front.paste(user_photo, (50, 160))
+        except:
+            draw_f.rectangle([(50, 160), (290, 450)], fill="#E5E7EB", outline="#9CA3AF")
     else:
         draw_f.rectangle([(50, 160), (290, 450)], fill="#E5E7EB", outline="#9CA3AF")
-        draw_f.text((120, 290), "[ ፎቶ ]", fill="#6B7280", font=font_regular)
-
-    draw_f.text((330, 160), f"ሙሉ ስም / Full Name:", fill="#4B5563", font=font_small)
+[10/7/2026 12:14 PM] A/Aziz: draw_f.text((330, 160), "ሙሉ ስም / Full Name:", fill="#4B5563", font=font_small)
     draw_f.text((330, 185), f"{data['name_am']}", fill="#111827", font=font_bold)
     draw_f.text((330, 220), f"{data['name_en']}", fill="#111827", font=font_bold)
     draw_f.text((330, 270), f"የትውልድ ቀን / Date of Birth:  {data['dob']}", fill="#111827", font=font_regular)
@@ -119,7 +121,7 @@ def create_id_cards(data, user_id):
     qr.add_data(f"FAYDA-VERIFY-FCN:{data['fcn']}\nName:{data['name_en']}")
     qr.make(fit=True)
     qr_img = qr.make_image(fill_color="black", back_color="white").resize((280, 280))
-    back.paste(qr_img, (650, 130))
+    back.paste(qr_img, (680, 120))
     
     draw_b.text((50, 540), "ይህ ካርድ የባለቤቱን ማንነት ለመግለጽ የሚያገለግል ብሔራዊ የፊርማ ዲጂታል መታወቂያ ነው።", fill="#6B7280", font=font_small)
 
@@ -131,40 +133,41 @@ def create_id_cards(data, user_id):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 እንኳን ወደ ፕሮፌሽናል Fayda Converter ቦት በሰላም መጡ!\n\n"
-        "አሁን ቦቱ የአንተን እውነተኛ የFayda PDF ፋይል ተቀብሎ በራስ-ሰር መረጃዎችን በመለቀም "
-        "የፊትና የጀርባ ካርድ መጠን መታወቂያ ይሰራል። እባክዎ የFayda PDF ፋይልዎን በቀጥታ ይላኩ።"
+        "እባክዎ የFayda PDF ፋይልዎን በቀጥታ ይላኩ።"
     )
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     document = update.message.document
-    if not document.file_name.lower().endswith('.pdf'):
-        await update.message.reply_text("❌ እባክዎ PDF ፋይል ብቻ ይላኩ!")
+    if not document or not document.file_name.lower().endswith('.pdf'):
         return
         
     status = await update.message.reply_text("⏳ የእርስዎ እውነተኛ የFayda ፒዲኤፍ እየተነበበና መታወቂያው እየተቀረጸ ነው...")
     user_id = update.message.from_user.id
+    pdf_path = f"temp_{user_id}.pdf"
     
     try:
-        pdf_file = await context.bot.get_file(document.file_id)
-        pdf_path = f"temp_{user_id}.pdf"
-        await pdf_file.download_to_drive(pdf_path)
+        # አዲሱ የቴሌግራም v20+ ፋይል ማውረጃ ስልት
+        tg_file = await context.bot.get_file(document.file_id)
+        await tg_file.download_to_drive(custom_path=pdf_path)
         
         fayda_data = extract_fayda_pdf_details(pdf_path, user_id)
         front_img, back_img = create_id_cards(fayda_data, user_id)
         
         await status.edit_text("✅ የእርስዎ መታወቂያ ካርድ በተሳካ ሁኔታ ተዘጋጅቷል! በመላክ ላይ...")
         
-        with open(front_img, 'rb') as f: await update.message.reply_photo(photo=f, caption=f"የፊት ገጽ (Front ID) - FCN: {fayda_data['fcn']}")
-        with open(back_img, 'rb') as b: await update.message.reply_photo(photo=b, caption="የጀርባ ገጽ (Back ID) - QR የተካተተ")
+        with open(front_img, 'rb') as f: 
+            await update.message.reply_photo(photo=f, caption=f"የፊት ገጽ (Front ID) - FCN: {fayda_data['fcn']}")
+        with open(back_img, 'rb') as b: 
+            await update.message.reply_photo(photo=b, caption="የጀርባ ገጽ (Back ID) - QR የተካተተ")
         
-        os.remove(pdf_path)
-        os.remove(front_img)
-        os.remove(back_img)
+        if os.path.exists(pdf_path): os.remove(pdf_path)
+        if os.path.exists(front_img): os.remove(front_img)
+        if os.path.exists(back_img): os.remove(back_img)
         if fayda_data["photo"] and os.path.exists(fayda_data["photo"]): 
             os.remove(fayda_data["photo"])
             
     except Exception as e: 
-        logging.error(f"Error: {e}")
+        logging.error(f"Error handling document: {e}")
         await status.edit_text("❌ ፋይሉን ለማንበብ ወይም ካርዱን ለመስራት አልተሳካም። እባክዎ ትክክለኛ የፋይዳ PDF መሆኑን ያረጋግጡ።")
 
 def main():
@@ -172,8 +175,8 @@ def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
-    print("Professional Fayda Converter Bot Dynamic Mode Live...")
+    print("Professional Fayda Converter Bot Fixed Version Live...")
     app.run_polling()
 
-if __name__ == "__main__": 
+if __name__ == "__main__":
     main()
