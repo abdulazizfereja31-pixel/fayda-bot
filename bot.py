@@ -30,7 +30,6 @@ def extract_fayda_pdf_details(pdf_path, user_id):
 
     if not image_extracted: photo_path = None
     
-    # የዲፎልት መረጃዎች (ጽሑፉ ባይገኝ እንኳ ሰረዝ እንዳይሆን መከላከያ)
     data = {
         "fcn": "4672 7864 8170 8763",
         "name_am": "አብዱ ፈጃ ዋጃ",
@@ -47,15 +46,12 @@ def extract_fayda_pdf_details(pdf_path, user_id):
         "photo": photo_path
     }
 
-    # 🔍 ያንተን እውነተኛ የፋይዳ PDF ጽሑፍ በቀጥታ የመለቀሚያ መንገድ (አዲስ መዋቅር)
     try:
         text_lines = [line.strip() for line in full_text.split('\n') if line.strip()]
         for idx, line in enumerate(text_lines):
             if "FCN:" in line:
-                # ከ FCN: ቀጥሎ ባለው መስመር ላይ ያለውን ቁጥር ይወስዳል
                 if idx + 1 < len(text_lines): data["fcn"] = text_lines[idx+1]
             if "First, Middle, Surname" in line:
-                # ከዚህ ጽሑፍ ቀጥሎ ያሉትን የአማርኛ እና የእንግሊዝኛ ስሞች ይወስዳል
                 if idx + 1 < len(text_lines): data["name_am"] = text_lines[idx+1]
                 if idx + 2 < len(text_lines): data["name_en"] = text_lines[idx+2]
             if "Date of Birth" in line:
@@ -90,13 +86,12 @@ def create_id_cards(data, user_id):
     # --- የፊት ገጽ (Front) ---
     front = Image.new("RGB", (w, h), "#FFFFFF")
     draw_f = ImageDraw.Draw(front)
-    # ሰንደቅ ዓላማ ባር
+    
     draw_f.rectangle([(0, 0), (w, 15)], fill="#1E8449")
     draw_f.rectangle([(0, 15), (w, 28)], fill="#F4D03F")
     draw_f.rectangle([(0, 28), (w, 40)], fill="#C0392B")
     
     draw_f.text((50, 65), "የኢትዮጵያ ዲጂታል መታወቂያ | Ethiopian Digital ID Card", fill="#1F2937", font=font_bold)
-    
     if data["photo"] and os.path.exists(data["photo"]):
         try:
             user_photo = Image.open(data["photo"]).resize((240, 290))
@@ -106,10 +101,9 @@ def create_id_cards(data, user_id):
     else:
         draw_f.rectangle([(50, 140), (290, 430)], fill="#E5E7EB", outline="#9CA3AF")
 
-    # ጽሑፎችን በትክክል መጻፊያ (ሰረዞቹን ያስቀራል)
-    draw_f.text((320, 140), "ሙሉ ስም / Full Name:", fill="#4B5563", font=font_small)
-    draw_f.text((320, 170), f"{data['name_am']}", fill="#111827", font=font_bold)
-    draw_f.text((320, 210), f"{data['name_en']}", fill="#111827", font=font_bold)
+    draw_f.text((320, 140), "Maps Demographic Data | የስነ ሕዝብ መረጃ", fill="#4B5563", font=font_small)
+    draw_f.text((320, 170), f"ሙሉ ስም፦ {data['name_am']}", fill="#111827", font=font_bold)
+    draw_f.text((320, 210), f"Full Name: {data['name_en']}", fill="#111827", font=font_bold)
     draw_f.text((320, 265), f"የትውልድ ቀን / Date of Birth:  {data['dob']}", fill="#111827", font=font_regular)
     draw_f.text((320, 315), f"ፆታ / SEX:  {data['sex_am']} / {data['sex_en']}", fill="#111827", font=font_regular)
     draw_f.text((320, 365), f"ዜግነት / Nationality:  ኢትዮጵያዊ / Ethiopian", fill="#111827", font=font_regular)
@@ -164,7 +158,8 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         with open(front_img, 'rb') as f: 
             await update.message.reply_photo(photo=f, caption=f"የፊት ገጽ (Front ID) - FCN: {fayda_data['fcn']}")
-            with open(back_img, 'rb') as b: 
+        
+        with open(back_img, 'rb') as b: 
             await update.message.reply_photo(photo=b, caption="የጀርባ ገጽ (Back ID) - QR የተካተተ")
         
         if os.path.exists(pdf_path): os.remove(pdf_path)
@@ -184,6 +179,5 @@ def main():
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     print("Professional Fayda Converter Bot Text Fix Live...")
     app.run_polling()
-
 if __name__ == "__main__": 
     main()
