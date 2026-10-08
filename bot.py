@@ -10,7 +10,6 @@ from PIL import Image, ImageDraw, ImageFont
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# ⚠️ የ Chapa እውነተኛ የሙከራ ቁልፍህ
 CHAPA_SECRET_KEY = "CHASECK_TEST-6D3U9C9vPcc0vNfHAdqMWhvDq2P8zS64" 
 CARD_PRICE = 50 
 
@@ -101,7 +100,8 @@ def create_id_cards(data, user_id):
         draw_f.rectangle([(48, 168), (282, 447)], outline="#059669", width=3)
     else:
         draw_f.rectangle([(50, 160), (280, 445)], fill="#E5E7EB", outline="#9CA3AF")
-        x_offset = 320
+
+    x_offset = 320
     draw_f.text((x_offset, 160), "Maps Demographic Data | የስነ ሕዝብ መረጃ", fill="#6B7280", font=font_small)
     draw_f.text((x_offset, 190), f"ሙሉ ስም፦ {data['name_am']}", fill="#111827", font=font_bold)
     draw_f.text((x_offset, 230), f"Full Name: {data['name_en']}", fill="#1F2937", font=font_medium)
@@ -144,7 +144,6 @@ def create_id_cards(data, user_id):
 user_states = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 🔘 መጀመሪያ የሚመጡት የክፍያ በተኖች መቆጣጠሪያ
     keyboard = [
         [InlineKeyboardButton("💳 በ Chapa / ቴሌብር ይክፈሉ", url="https://chapa.co")],
         [InlineKeyboardButton("🔄 ክፍያ አረጋግጥ", callback_data="verify_payment")]
@@ -153,7 +152,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         "👋 እንኳን ወደ Fayda Converter Plus በሰላም መጡ!\n\n"
-        "የእርስዎን የFayda PDF ፋይል በቀላሉ ለህትመት ወደሚመች የፕላስቲክ ካርድ መጠን (Front & Back ID) ለመለወጥ መጀመሪያ ክፍያ መፈጸም አለብዎት።\n\n"
+        "የእርስዎን የFayda PDF ፋይል በቀላሉ ለህትመት ወደሚመች የፕላስቲክ ካርድ መጠን (Front & Back ID) ለመለወጥ መጀመሪያ ክፍያ መፈጸም አለብዎት。\n\n"
         "💵 ዋጋ፦ 50 ብር ብቻ\n\n"
         "እባክዎ ከታች ያለውን ቁልፍ ተጭነው ከከፈሉ በኋላ 'ክፍያ አረጋግጥ' የሚለውን ይጫኑ፦",
         reply_markup=reply_markup
@@ -174,7 +173,8 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id not in user_states or not user_states[user_id].get("paid", False):
         await update.message.reply_text("⚠️ ይቅርታ! መጀመሪያ የ /start ትዕዛዝን በመጫን ክፍያ መፈጸም እና ማረጋገጥ አለብዎት።")
         return
-        document = update.message.document
+        
+    document = update.message.document
     if not document or not document.file_name.lower().endswith('.pdf'):
         await update.message.reply_text("❌ እባክዎ የፋይዳ PDF ፋይል ብቻ ይላኩ!")
         return
@@ -191,7 +191,6 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await status.edit_text("✅ የእርስዎ መታወቂያ ካርድ በተሳካ ሁኔታ ተዘጋጅቷል! በመላክ ላይ...")
         
-        # 🔘 መታወቂያው ሲላክ ከስር የሚመጡት የዳውንሎድ በተኖች (Download Buttons)
         download_kbd = [
             [InlineKeyboardButton("📥 የፊት ገጽ አውርድ (Front)", callback_data="download_front")],
             [InlineKeyboardButton("📥 የጀርባ ገጽ አውርድ (Back)", callback_data="download_back")]
@@ -223,3 +222,4 @@ def main():
     app.run_polling()
 
 if __name__ == "__main__":
+    main()
