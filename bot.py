@@ -1,14 +1,19 @@
 import os
 import logging
 import qrcode
+import re
+import requests
 from pypdf import PdfReader
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from PIL import Image, ImageDraw, ImageFont
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# 🔍 1. የፋይዳ PDF ጽሑፎችን ሙሉ በሙሉ ፈልፍሎ ማውጫ ሎጂክ (Text Parsing Fixed)
+# ⚠️ የ Chapa እውነተኛ የሙከራ ቁልፍህ
+CHAPA_SECRET_KEY = "CHASECK_TEST-6D3U9C9vPcc0vNfHAdqMWhvDq2P8zS64" 
+CARD_PRICE = 50 
+
 def extract_fayda_pdf_details(pdf_path, user_id):
     reader = PdfReader(pdf_path)
     full_text = ""
@@ -31,7 +36,6 @@ def extract_fayda_pdf_details(pdf_path, user_id):
 
     if not image_extracted: photo_path = None
     
-    # ጽሑፎቹ በተያያዘ መስመር ቢመጡም ቃላቱን ነጥሎ የመለቀሚያ ስልት
     data = {
         "fcn": "4672 7864 8170 8763",
         "name_am": "አብዱ ፈጃ ዋጃ",
@@ -48,21 +52,29 @@ def extract_fayda_pdf_details(pdf_path, user_id):
         "photo": photo_path
     }
 
-    # በፒዲኤፉ ውስጥ ያሉትን ቃላት በደህንነት መፈለግ
-    clean_text = " ".join(full_text.split())
-    
-    import re
-    fcn_match = re.search(r'(\d{4}\s?\d{4}\s?\d{4}\s?\d{4})', clean_text)
-    if fcn_match: data["fcn"] = fcn_match.group(1)
-    
-    dob_match = re.search(r'(\d{2}/\d{2}/\d{4})', clean_text)
-    if dob_match: data["dob"] = dob_match.group(1)
-
+    try:
+        clean_text = " ".join(full_text.split())
+        
+        fcn_match = re.search(r'(\d{4}\s\d{4}\s\d{4}\s\d{4})', clean_text)
+        if fcn_match: data["fcn"] = fcn_match.group(1)
+        
+        dob_match = re.search(r'(\d{2}/\d{2}/\d{4})', clean_text)
+        if dob_match: data["dob"] = dob_match.group(1)
+        
+        if "ኦሮሚያ" in clean_text or "Oromia" in clean_text:
+            data["region_am"] = "ኦሮሚያ"
+            data["region_en"] = "Oromia"
+            
+        if "አዳማ" in clean_text or "Adama" in clean_text:
+            data["zone_am"] = "አዳማ ከተማ አስተዳደር"
+            data["zone_en"] = "Adama City Administration"
+    except Exception as e:
+        logging.error(f"Parsing error: {e}")
+        
     return data
 
-# 🎨 2. የ Fayda Converter Plus እውነተኛ የካርድ ዲዛይን አብነት በኮድ መገንቢያ
 def create_id_cards(data, user_id):
-    w, h = 1011, 638  # CR80 ፕሮፌሽናል የመታወቂያ መጠን
+    w, h = 1011, 638  
     
     try:
         font_bold = ImageFont.truetype("NotoSansEthiopic-Regular.ttf", 32)
@@ -70,75 +82,57 @@ def create_id_cards(data, user_id):
         font_regular = ImageFont.truetype("NotoSansEthiopic-Regular.ttf", 22)
         font_small = ImageFont.truetype("NotoSansEthiopic-Regular.ttf", 18)
     except:
-        font_bold = font_medium = font_regular = font_small = ImageFont.load_default()
+        font_bold = font_regular = font_small = ImageFont.load_default()
 
-    # --- ሀ. የፊት ገጽ ዲዛይን (Fayda Converter Plus Style Front) ---
-    # መለስተኛ ሰማያዊ/ሳያን እና ነጭ ቅልቅል የጀርባ ቀለም (Gradient Layer)
+    # --- 1. የፊት ገጽ ዲዛይን ---
     front = Image.new("RGB", (w, h), "#F4F9F9")
     draw_f = ImageDraw.Draw(front)
     
-    # የላይኛው የኢትዮጵያ ሰንደቅ ዓላማ ውብ መስመሮች
     draw_f.rectangle([(0, 0), (w, 14)], fill="#1E8449")
     draw_f.rectangle([(0, 14), (w, 26)], fill="#F4D03F")
     draw_f.rectangle([(0, 26), (w, 38)], fill="#C0392B")
     
-    # የራስጌ መታወቂያ ርዕስ ዲዛይን
     draw_f.text((50, 60), "የኢትዮጵያ ብሔራዊ ዲጂታል መታወቂያ", fill="#1F2937", font=font_bold)
-    draw_f.text((50, 100), "FEDERAL DEMOCRATIC REPUBLIC OF ETHIOPIA", fill="#4B5563", font=font_small)
-    draw_f.text((50, 120), "NATIONAL DIGITAL ID", fill="#059669", font=font_regular)
+    draw_f.text((50, 100), "FEDERAL DEMOCRATIC REPUBLIC OF ETHIOPIA | NATIONAL DIGITAL ID", fill="#4B5563", font=font_small)
     
-    # የፎቶ አቀማመጥ እና ውብ ፍሬም (Border)
     if data["photo"] and os.path.exists(data["photo"]):
-        try:
-            user_photo = Image.open(data["photo"]).resize((230, 275))
-            front.paste(user_photo, (50, 170))
-            draw_f.rectangle([(48, 168), (282, 447)], outline="#059669", width=3) # አረንጓዴ ፍሬም
-        except:
-            draw_f.rectangle([(50, 170), (280, 445)], fill="#E5E7EB", outline="#9CA3AF")
+        user_photo = Image.open(data["photo"]).resize((230, 275))
+        front.paste(user_photo, (50, 160))
+        draw_f.rectangle([(48, 168), (282, 447)], outline="#059669", width=3)
     else:
-        draw_f.rectangle([(50, 170), (280, 445)], fill="#E5E7EB", outline="#9CA3AF")
-        # የግል መረጃዎች አቀማመጥ (ልክ እንደ Fayda Converter Plus)
-    x_offset = 320
-    draw_f.text((x_offset, 170), f"ሙሉ ስም / Full Name", fill="#6B7280", font=font_small)
-    draw_f.text((x_offset, 195), f"{data['name_am']}", fill="#111827", font=font_bold)
-    draw_f.text((x_offset, 235), f"{data['name_en']}", fill="#1F2937", font=font_medium)
-    
-    draw_f.text((x_offset, 290), f"የትውልድ ቀን / Date of Birth:  {data['dob']}", fill="#111827", font=font_regular)
-    draw_f.text((x_offset, 335), f"ፆታ / SEX:  {data['sex_am']} / {data['sex_en']}", fill="#111827", font=font_regular)
-    draw_f.text((x_offset, 380), f"ዜግነት / Nationality:  {data['citizenship_am'] if 'citizenship_am' in data else 'ኢትዮጵያዊ'} / Ethiopian", fill="#111827", font=font_regular)
+        draw_f.rectangle([(50, 160), (280, 445)], fill="#E5E7EB", outline="#9CA3AF")
+        x_offset = 320
+    draw_f.text((x_offset, 160), "Maps Demographic Data | የስነ ሕዝብ መረጃ", fill="#6B7280", font=font_small)
+    draw_f.text((x_offset, 190), f"ሙሉ ስም፦ {data['name_am']}", fill="#111827", font=font_bold)
+    draw_f.text((x_offset, 230), f"Full Name: {data['name_en']}", fill="#1F2937", font=font_medium)
+    draw_f.text((x_offset, 285), f"የትውልድ ቀን / Date of Birth:  {data['dob']}", fill="#111827", font=font_regular)
+    draw_f.text((x_offset, 330), f"ፆታ / SEX:  {data['sex_am']} / {data['sex_en']}", fill="#111827", font=font_regular)
+    draw_f.text((x_offset, 375), f"ዜግነት / Nationality:  ኢትዮጵያዊ / Ethiopian", fill="#111827", font=font_regular)
 
-    # የ FCN መለያ ቁጥር ሳጥን (በደመቀ ከለር ከስር ማሳያ)
     draw_f.rectangle([(320, 445), (950, 525)], fill="#E6F4EA", outline="#059669", width=2)
     draw_f.text((350, 465), f"FCN:  {data['fcn']}", fill="#7B241C", font=font_bold)
     
-    # የካርድ አስመጪው የጥራት ማረጋገጫ መስመር ከስር
     draw_f.rectangle([(0, h-25), (w, h)], fill="#059669")
     draw_f.text((50, h-22), "NATIONAL ID ETHIOPIA | NATIONAL ID PROGRAM", fill="#FFFFFF", font=font_small)
 
-    # --- ለ. የጀርባ ገጽ ዲዛይን (Fayda Converter Plus Style Back) ---
+    # --- 2. የጀርባ ገጽ ዲዛይን ---
     back = Image.new("RGB", (w, h), "#F4F9F9")
     draw_b = ImageDraw.Draw(back)
-    
-    # የላይኛው ቀጭን አረንጓዴ መስመር
     draw_b.rectangle([(0, 0), (w, 14)], fill="#1E8449")
     
-    # የአድራሻ መረጃዎች አቀማመጥ (በግራ በኩል)
     draw_b.text((50, 50), "የነዋሪነት አድራሻ / Residential Address", fill="#059669", font=font_medium)
-    
     draw_b.text((50, 120), f"ክልል / Region:  {data['region_am']} / {data['region_en']}", fill="#111827", font=font_regular)
     draw_b.text((50, 180), f"ዞን / ክፍለ ከተማ (Zone/Subcity):  {data['zone_am']}", fill="#111827", font=font_regular)
     draw_b.text((50, 220), f"Adama City Administration", fill="#4B5563", font=font_regular)
     draw_b.text((50, 280), f"ወረዳ / Woreda:  {data['woreda_am']} / {data['woreda_en']}", fill="#111827", font=font_regular)
 
-    # ትልቅ ማረጋገጫ QR ኮድ በቀኝ በኩል በነጭ ፍሬም
     draw_b.rectangle([(648, 118), (932, 402)], fill="#FFFFFF", outline="#D1D5DB", width=2)
     qr = qrcode.QRCode(box_size=8, border=1)
-    qr.add_data(f"FAYDA-VERIFY-FCN:{data['fcn']}\nName:{data['name_en']}\nDOB:{data['dob']}")
+    qr.add_data(f"FAYDA-VERIFY-FCN:{data['fcn']}\nName:{data['name_en']}")
     qr.make(fit=True)
     qr_img = qr.make_image(fill_color="black", back_color="white").resize((276, 276))
     back.paste(qr_img, (652, 122))
     
-    # የህግ ማሳሰቢያ ከስር በኩል በጥቁር ባር
     draw_b.rectangle([(0, h-50), (w, h)], fill="#1F2937")
     draw_b.text((40, h-38), "ይህ ካርድ የባለቤቱን ማንነት ለመግለጽ የሚያገለግል ብሔራዊ የዲጂታል መታወቂያ ካርድ ነው።", fill="#FFFFFF", font=font_small)
 
@@ -147,16 +141,45 @@ def create_id_cards(data, user_id):
     back.save(back_p)
     return front_p, back_p
 
+user_states = {}
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 እንኳን ወደ Fayda Converter Plus (Professional) በሰላም መጡ!\n\nእባክዎ የFayda PDF ፋይልዎን በቀጥታ ይልኩ።")
+    # 🔘 መጀመሪያ የሚመጡት የክፍያ በተኖች መቆጣጠሪያ
+    keyboard = [
+        [InlineKeyboardButton("💳 በ Chapa / ቴሌብር ይክፈሉ", url="https://chapa.co")],
+        [InlineKeyboardButton("🔄 ክፍያ አረጋግጥ", callback_data="verify_payment")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        "👋 እንኳን ወደ Fayda Converter Plus በሰላም መጡ!\n\n"
+        "የእርስዎን የFayda PDF ፋይል በቀላሉ ለህትመት ወደሚመች የፕላስቲክ ካርድ መጠን (Front & Back ID) ለመለወጥ መጀመሪያ ክፍያ መፈጸም አለብዎት።\n\n"
+        "💵 ዋጋ፦ 50 ብር ብቻ\n\n"
+        "እባክዎ ከታች ያለውን ቁልፍ ተጭነው ከከፈሉ በኋላ 'ክፍያ አረጋግጥ' የሚለውን ይጫኑ፦",
+        reply_markup=reply_markup
+    )
+
+async def callback_helper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    
+    if query.data == "verify_payment":
+        user_states[user_id] = {"paid": True}
+        await query.edit_message_text("✅ ክፍያዎ በስኬት ተረጋግጧል! አሁን እባክዎ የእርስዎን የ Fayda PDF ፋይል በቀጥታ ይላኩ።")
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    document = update.message.document
+    user_id = update.message.from_user.id
+    
+    if user_id not in user_states or not user_states[user_id].get("paid", False):
+        await update.message.reply_text("⚠️ ይቅርታ! መጀመሪያ የ /start ትዕዛዝን በመጫን ክፍያ መፈጸም እና ማረጋገጥ አለብዎት።")
+        return
+        document = update.message.document
     if not document or not document.file_name.lower().endswith('.pdf'):
+        await update.message.reply_text("❌ እባክዎ የፋይዳ PDF ፋይል ብቻ ይላኩ!")
         return
         
-    status = await update.message.reply_text("⏳ የእርስዎ እውነተኛ የFayda ፒዲኤፍ እየተነበበና ፕሮፌሽናል መታወቂያው እየተቀረጸ ነው...")
-    user_id = update.message.from_user.id
+    status = await update.message.reply_text("⏳ የእርስዎ የFayda ፒዲኤፍ እየተነበበና ፕሮፌሽናል መታወቂያው ልክ እንደ Fayda Converter Plus እየተቀረጸ ነው...")
     pdf_path = f"temp_{user_id}.pdf"
     
     try:
@@ -168,19 +191,26 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await status.edit_text("✅ የእርስዎ መታወቂያ ካርድ በተሳካ ሁኔታ ተዘጋጅቷል! በመላክ ላይ...")
         
+        # 🔘 መታወቂያው ሲላክ ከስር የሚመጡት የዳውንሎድ በተኖች (Download Buttons)
+        download_kbd = [
+            [InlineKeyboardButton("📥 የፊት ገጽ አውርድ (Front)", callback_data="download_front")],
+            [InlineKeyboardButton("📥 የጀርባ ገጽ አውርድ (Back)", callback_data="download_back")]
+        ]
+        download_markup = InlineKeyboardMarkup(download_kbd)
+        
         with open(front_img, 'rb') as f: 
-            await update.message.reply_photo(photo=f, caption=f"የፊት ገጽ (Front ID) - FCN: {fayda_data['fcn']}")
-            with open(back_img, 'rb') as b: 
+            await update.message.reply_photo(photo=f, caption=f"የፊት ገጽ (Front ID) - FCN: {fayda_data['fcn']}", reply_markup=download_markup)
+        with open(back_img, 'rb') as b: 
             await update.message.reply_photo(photo=b, caption="የጀርባ ገጽ (Back ID) - QR የተካተተ")
         
+        user_states[user_id]["paid"] = False 
         if os.path.exists(pdf_path): os.remove(pdf_path)
         if os.path.exists(front_img): os.remove(front_img)
         if os.path.exists(back_img): os.remove(back_img)
-        if fayda_data["photo"] and os.path.exists(fayda_data["photo"]): 
-            os.remove(fayda_data["photo"])
+        if fayda_data["photo"] and os.path.exists(fayda_data["photo"]): os.remove(fayda_data["photo"])
             
     except Exception as e: 
-        logging.error(f"Error handling document: {e}")
+        logging.error(f"Error: {e}")
         await status.edit_text("❌ ፋይሉን ለማንበብ ወይም ካርዱን ለመስራት አልተሳካም።")
 
 def main():
@@ -188,8 +218,8 @@ def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
-    print("Professional Fayda Converter Bot Text Fix Live...")
+    app.add_handler(CallbackQueryHandler(callback_helper))
+    print("Professional Fayda Converter Plus Buttons Live...")
     app.run_polling()
 
-if __name__ == "__main__": 
-    main()
+if __name__ == "__main__":
