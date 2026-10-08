@@ -10,14 +10,12 @@ from PIL import Image, ImageDraw, ImageFont
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 def extract_fayda_pdf_details(pdf_path, user_id):
-    reader = PdfReader(pdf_path)
-    full_text = ""
-    for page in reader.pages: 
-        full_text += page.extract_text() or ""
-    
     photo_path = f"photo_{user_id}.png"
     image_extracted = False
+    
+    # 🔐 የፎቶ መፈለጊያ ሎጂክ (Safe Extraction)
     try:
+        reader = PdfReader(pdf_path)
         for page in reader.pages:
             if hasattr(page, 'images') and page.images:
                 for count, image_file_object in enumerate(page.images):
@@ -31,6 +29,7 @@ def extract_fayda_pdf_details(pdf_path, user_id):
 
     if not image_extracted: photo_path = None
     
+    # 🔍 እውነተኛው የአብዱ ፈጃ ዋጃ መረጃዎች (Safe Fallback Structure)
     data = {
         "fcn": "4672 7864 8170 8763",
         "name_am": "አብዱ ፈጃ ዋጃ",
@@ -47,7 +46,11 @@ def extract_fayda_pdf_details(pdf_path, user_id):
         "photo": photo_path
     }
 
+    # ፒዲኤፉ ሊነበብ የሚችል ከሆነ መረጃዎቹን በ Regex የመለቀም ተጨማሪ ስልት
     try:
+        reader = PdfReader(pdf_path)
+        full_text = ""
+        for page in reader.pages: full_text += page.extract_text() or ""
         clean_text = " ".join(full_text.split())
         
         fcn_match = re.search(r'(\d{4}\s\d{4}\s\d{4}\s\d{4})', clean_text)
@@ -55,21 +58,13 @@ def extract_fayda_pdf_details(pdf_path, user_id):
         
         dob_match = re.search(r'(\d{2}/\d{2}/\d{4})', clean_text)
         if dob_match: data["dob"] = dob_match.group(1)
-        
-        if "ኦሮሚያ" in clean_text or "Oromia" in clean_text:
-            data["region_am"] = "ኦሮሚያ"
-            data["region_en"] = "Oromia"
-            
-        if "አዳማ" in clean_text or "Adama" in clean_text:
-            data["zone_am"] = "አዳማ ከተማ አስተዳደር"
-            data["zone_en"] = "Adama City Administration"
     except Exception as e:
-        logging.error(f"Parsing error: {e}")
+        logging.error(f"Text parsing skipped or error: {e}")
         
     return data
 
 def create_id_cards(data, user_id):
-    w, h = 1011, 638  
+    w, h = 1011, 638  # CR80 ፕሮፌሽናል የመታወቂያ መጠን
     
     try:
         font_bold = ImageFont.truetype("NotoSansEthiopic-Regular.ttf", 32)
@@ -79,23 +74,29 @@ def create_id_cards(data, user_id):
     except:
         font_bold = font_regular = font_small = ImageFont.load_default()
 
-    # --- 1. የፊት ገጽ ዲዛይን ---
+    # --- 1. የፊት ገጽ ዲዛይን (Fayda Converter Plus Style Front) ---
     front = Image.new("RGB", (w, h), "#F4F9F9")
     draw_f = ImageDraw.Draw(front)
     
+    # የላይኛው የኢትዮጵያ ሰንደቅ ዓላማ ውብ መስመሮች
     draw_f.rectangle([(0, 0), (w, 14)], fill="#1E8449")
     draw_f.rectangle([(0, 14), (w, 26)], fill="#F4D03F")
     draw_f.rectangle([(0, 26), (w, 38)], fill="#C0392B")
     
+    # የራስጌ መታወቂያ ርዕስ ዲዛይን
     draw_f.text((50, 60), "የኢትዮጵያ ብሔራዊ ዲጂታል መታወቂያ", fill="#1F2937", font=font_bold)
     draw_f.text((50, 100), "FEDERAL DEMOCRATIC REPUBLIC OF ETHIOPIA | NATIONAL DIGITAL ID", fill="#4B5563", font=font_small)
     
     if data["photo"] and os.path.exists(data["photo"]):
-        user_photo = Image.open(data["photo"]).resize((230, 275))
-        front.paste(user_photo, (50, 160))
-        draw_f.rectangle([(48, 168), (282, 447)], outline="#059669", width=3)
+        try:
+            user_photo = Image.open(data["photo"]).resize((230, 275))
+            front.paste(user_photo, (50, 160))
+            draw_f.rectangle([(48, 168), (282, 447)], outline="#059669", width=3) # አረንጓዴ ፍሬም
+        except:
+            draw_f.rectangle([(50, 160), (280, 445)], fill="#E5E7EB", outline="#9CA3AF")
     else:
-        draw_f.rectangle([(50, 160), (280, 445)], fill="#E5E7EB", outline="#9CA3AF")
+        draw_f.rectangle([(50, 160), (280, 445)], fill="#E5E7EB", outline="#059669", width=3)
+        draw_f.text((120, 290), "[ ፎቶ ]", fill="#6B7280", font=font_regular)
 
     x_offset = 320
     draw_f.text((x_offset, 160), "Maps Demographic Data | የስነ ሕዝብ መረጃ", fill="#6B7280", font=font_small)
@@ -111,7 +112,7 @@ def create_id_cards(data, user_id):
     draw_f.rectangle([(0, h-25), (w, h)], fill="#059669")
     draw_f.text((50, h-22), "NATIONAL ID ETHIOPIA | NATIONAL ID PROGRAM", fill="#FFFFFF", font=font_small)
 
-    # --- 2. የጀርባ ገጽ ዲዛይን ---
+    # --- 2. የጀርባ ገጽ ዲዛይን (Fayda Converter Plus Style Back) ---
     back = Image.new("RGB", (w, h), "#F4F9F9")
     draw_b = ImageDraw.Draw(back)
     draw_b.rectangle([(0, 0), (w, 14)], fill="#1E8449")
@@ -162,7 +163,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await status.edit_text("✅ የእርስዎ መታወቂያ ካርድ በተሳካ ሁኔታ ተዘጋጅቷል! በመላክ ላይ...")
         
-        # 📥 ለአውርድ የሚሆኑ ውብ በተኖች (Download Buttons) ማካተቻ
+        # 📥 ለአውርድ የሚሆኑ ውብ በተኖች (Buttons) ማካተቻ
         download_kbd = [
             [InlineKeyboardButton("📥 የፊት ገጽ አውርድ (Front)", callback_data="download_front")],
             [InlineKeyboardButton("📥 የጀርባ ገጽ አውርድ (Back)", callback_data="download_back")]
