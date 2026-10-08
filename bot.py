@@ -213,7 +213,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status.edit_text("❌ ፋይሉን ለማንበብ ወይም ካርዱን ለመስራት አልተሳካም።")
 
 def main():
-    BOT_TOKEN = "8840163182:AAG6vk97HEGgmcmnfQfYd0BTd4IKRo9RZ64"
+    BOT_TOKEN = "8840163182:AAG6vk97HEGgmcmrFqFYd0BTd4IKRo9RZ64"
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
