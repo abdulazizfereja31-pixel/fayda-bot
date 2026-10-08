@@ -2,16 +2,12 @@ import os
 import logging
 import qrcode
 import re
-import requests
 from pypdf import PdfReader
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from PIL import Image, ImageDraw, ImageFont
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-
-CHAPA_SECRET_KEY = "CHASECK_TEST-6D3U9C9vPcc0vNfHAdqMWhvDq2P8zS64" 
-CARD_PRICE = 50 
 
 def extract_fayda_pdf_details(pdf_path, user_id):
     reader = PdfReader(pdf_path)
@@ -141,45 +137,20 @@ def create_id_cards(data, user_id):
     back.save(back_p)
     return front_p, back_p
 
-user_states = {}
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [InlineKeyboardButton("💳 በ Chapa / ቴሌብር ይክፈሉ", url="https://chapa.co")],
-        [InlineKeyboardButton("🔄 ክፍያ አረጋግጥ", callback_data="verify_payment")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
     await update.message.reply_text(
-        "👋 እንኳን ወደ Fayda Converter Plus በሰላም መጡ!\n\n"
-        "የእርስዎን የFayda PDF ፋይል በቀላሉ ለህትመት ወደሚመች የፕላስቲክ ካርድ መጠን (Front & Back ID) ለመለወጥ መጀመሪያ ክፍያ መፈጸም አለብዎት。\n\n"
-        "💵 ዋጋ፦ 50 ብር ብቻ\n\n"
-        "እባክዎ ከታች ያለውን ቁልፍ ተጭነው ከከፈሉ በኋላ 'ክፍያ አረጋግጥ' የሚለውን ይጫኑ፦",
-        reply_markup=reply_markup
+        "👋 እንኳን ወደ Fayda Converter Plus (Direct Mode) በሰላም መጡ!\n\n"
+        "አሁን ቦቱ ያለ ምንም ክፍያ በቀጥታ ይሰራል። እባክዎ የእርስዎን የ Fayda PDF ፋይል በቀጥታ ይላኩ።"
     )
 
-async def callback_helper(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-    
-    if query.data == "verify_payment":
-        user_states[user_id] = {"paid": True}
-        await query.edit_message_text("✅ ክፍያዎ በስኬት ተረጋግጧል! አሁን እባክዎ የእርስዎን የ Fayda PDF ፋይል በቀጥታ ይላኩ።")
-
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    
-    if user_id not in user_states or not user_states[user_id].get("paid", False):
-        await update.message.reply_text("⚠️ ይቅርታ! መጀመሪያ የ /start ትዕዛዝን በመጫን ክፍያ መፈጸም እና ማረጋገጥ አለብዎት።")
-        return
-        
     document = update.message.document
     if not document or not document.file_name.lower().endswith('.pdf'):
         await update.message.reply_text("❌ እባክዎ የፋይዳ PDF ፋይል ብቻ ይላኩ!")
         return
         
     status = await update.message.reply_text("⏳ የእርስዎ የFayda ፒዲኤፍ እየተነበበና ፕሮፌሽናል መታወቂያው ልክ እንደ Fayda Converter Plus እየተቀረጸ ነው...")
+    user_id = update.message.from_user.id
     pdf_path = f"temp_{user_id}.pdf"
     
     try:
@@ -191,6 +162,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await status.edit_text("✅ የእርስዎ መታወቂያ ካርድ በተሳካ ሁኔታ ተዘጋጅቷል! በመላክ ላይ...")
         
+        # 📥 ለአውርድ የሚሆኑ ውብ በተኖች (Download Buttons) ማካተቻ
         download_kbd = [
             [InlineKeyboardButton("📥 የፊት ገጽ አውርድ (Front)", callback_data="download_front")],
             [InlineKeyboardButton("📥 የጀርባ ገጽ አውርድ (Back)", callback_data="download_back")]
@@ -202,7 +174,6 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with open(back_img, 'rb') as b: 
             await update.message.reply_photo(photo=b, caption="የጀርባ ገጽ (Back ID) - QR የተካተተ")
         
-        user_states[user_id]["paid"] = False 
         if os.path.exists(pdf_path): os.remove(pdf_path)
         if os.path.exists(front_img): os.remove(front_img)
         if os.path.exists(back_img): os.remove(back_img)
@@ -212,13 +183,17 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Error: {e}")
         await status.edit_text("❌ ፋይሉን ለማንበብ ወይም ካርዱን ለመስራት አልተሳካም።")
 
+async def callback_helper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
 def main():
     BOT_TOKEN = "8840163182:AAG6vk97HEGgmcmrFqFYd0BTd4IKRo9RZ64"
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(CallbackQueryHandler(callback_helper))
-    print("Professional Fayda Converter Plus Buttons Live...")
+    print("Professional Fayda Converter Plus (No Pay Mode) Live...")
     app.run_polling()
 
 if __name__ == "__main__":
